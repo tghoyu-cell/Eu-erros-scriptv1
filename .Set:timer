@@ -1,0 +1,540 @@
+-- ScreenGui - Visualizador e Corretor de Scripts do Servidor
+-- LocalScript
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============================================
+-- DADOS DE EXEMPLO (substitua pelo que o servidor enviar)
+-- ============================================
+local scriptsData = {
+	{
+		Name = "MainServer",
+		Path = "ServerScriptService.MainServer",
+		Source = [[
+local Players = game:GetService("Players")
+
+Players.PlayerAdded:Connect(function(player)
+	print("Jogador entrou:", player.Name)
+	-- erro proposital
+	local money = player.leaderstats.Money.Value
+end)
+]],
+		Errors = {
+			{
+				Line = 6,
+				Message = "attempt to index nil with 'Money'",
+				Explanation = "O leaderstats ainda não foi criado quando o jogador entra. Você precisa esperar o leaderstats ser adicionado ou criar ele antes de acessar."
+			}
+		}
+	},
+	{
+		Name = "DataStoreManager",
+		Path = "ServerScriptService.Data.DataStoreManager",
+		Source = [[
+local DataStoreService = game:GetService("DataStoreService")
+local dataStore = DataStoreService:GetDataStore("PlayerData")
+
+local function save(player)
+	dataStore:SetAsync(player.UserId, {Money = 100})
+end
+]],
+		Errors = {} -- sem erros
+	},
+	{
+		Name = "AntiCheat",
+		Path = "ServerScriptService.Security.AntiCheat",
+		Source = [[
+-- script vazio de exemplo
+]],
+		Errors = {
+			{
+				Line = 1,
+				Message = "Script está vazio / incompleto",
+				Explanation = "Este script não tem nenhuma lógica ainda. Adicione a verificação de velocidade, teleporte, etc."
+			}
+		}
+	}
+}
+
+-- ============================================
+-- CRIAR A INTERFACE
+-- ============================================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ScriptDebuggerGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+-- Botão flutuante (canto superior direito)
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Name = "ToggleButton"
+toggleBtn.Size = UDim2.new(0, 52, 0, 52)
+toggleBtn.Position = UDim2.new(1, -70, 0, 18)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+toggleBtn.Image = "rbxassetid://8253773978"
+toggleBtn.ScaleType = Enum.ScaleType.Fit
+toggleBtn.Parent = screenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(1, 0) -- totalmente redondo
+toggleCorner.Parent = toggleBtn
+
+local toggleStroke = Instance.new("UIStroke")
+toggleStroke.Color = Color3.fromRGB(80, 80, 90)
+toggleStroke.Thickness = 1.5
+toggleStroke.Parent = toggleBtn
+
+-- Frame principal
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 720, 0, 480)
+mainFrame.Position = UDim2.new(0.5, -360, 0.5, -240)
+mainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+mainFrame.Visible = false
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(55, 55, 70)
+mainStroke.Thickness = 1.5
+mainStroke.Parent = mainFrame
+
+-- Barra de título
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 42)
+titleBar.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 12)
+titleCorner.Parent = titleBar
+
+-- Corrige o canto de baixo da titleBar
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0, 15)
+titleFix.Position = UDim2.new(0, 0, 1, -15)
+titleFix.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+titleFix.BorderSizePixel = 0
+titleFix.Parent = titleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -100, 1, 0)
+titleLabel.Position = UDim2.new(0, 16, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Scripts do Servidor"
+titleLabel.TextColor3 = Color3.fromRGB(230, 230, 240)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 16
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+-- Botão Fechar (X)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 36, 0, 36)
+closeBtn.Position = UDim2.new(1, -42, 0, 3)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 35)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.Parent = titleBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+-- Botão Voltar
+local backBtn = Instance.new("TextButton")
+backBtn.Size = UDim2.new(0, 80, 0, 28)
+backBtn.Position = UDim2.new(0, 12, 0, 52)
+backBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+backBtn.Text = "← Voltar"
+backBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+backBtn.Font = Enum.Font.Gotham
+backBtn.TextSize = 13
+backBtn.Visible = false
+backBtn.Parent = mainFrame
+
+local backCorner = Instance.new("UICorner")
+backCorner.CornerRadius = UDim.new(0, 6)
+backCorner.Parent = backBtn
+
+-- Container de conteúdo
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.Size = UDim2.new(1, -24, 1, -100)
+content.Position = UDim2.new(0, 12, 0, 88)
+content.BackgroundTransparency = 1
+content.Parent = mainFrame
+
+-- ============================================
+-- VIEWS
+-- ============================================
+
+-- 1. Lista de Scripts
+local listView = Instance.new("ScrollingFrame")
+listView.Name = "ListView"
+listView.Size = UDim2.new(1, 0, 1, 0)
+listView.BackgroundTransparency = 1
+listView.BorderSizePixel = 0
+listView.ScrollBarThickness = 4
+listView.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
+listView.CanvasSize = UDim2.new(0, 0, 0, 0)
+listView.Parent = content
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 8)
+listLayout.Parent = listView
+
+-- 2. View do Código + Erros
+local codeView = Instance.new("Frame")
+codeView.Name = "CodeView"
+codeView.Size = UDim2.new(1, 0, 1, 0)
+codeView.BackgroundTransparency = 1
+codeView.Visible = false
+codeView.Parent = content
+
+local codeTitle = Instance.new("TextLabel")
+codeTitle.Size = UDim2.new(1, -120, 0, 28)
+codeTitle.BackgroundTransparency = 1
+codeTitle.TextColor3 = Color3.fromRGB(220, 220, 240)
+codeTitle.Font = Enum.Font.GothamBold
+codeTitle.TextSize = 15
+codeTitle.TextXAlignment = Enum.TextXAlignment.Left
+codeTitle.Parent = codeView
+
+-- Botão Corrigir com ChatGPT
+local fixBtn = Instance.new("ImageButton")
+fixBtn.Name = "FixButton"
+fixBtn.Size = UDim2.new(0, 42, 0, 42)
+fixBtn.Position = UDim2.new(1, -48, 0, -6)
+fixBtn.BackgroundColor3 = Color3.fromRGB(40, 55, 45)
+fixBtn.Image = "rbxassetid://100936854399323"
+fixBtn.ScaleType = Enum.ScaleType.Fit
+fixBtn.Visible = false
+fixBtn.Parent = codeView
+
+local fixCorner = Instance.new("UICorner")
+fixCorner.CornerRadius = UDim.new(0, 8)
+fixCorner.Parent = fixBtn
+
+local codeScroll = Instance.new("ScrollingFrame")
+codeScroll.Size = UDim2.new(1, 0, 0.55, -10)
+codeScroll.Position = UDim2.new(0, 0, 0, 34)
+codeScroll.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+codeScroll.BorderSizePixel = 0
+codeScroll.ScrollBarThickness = 4
+codeScroll.Parent = codeView
+
+local codeCorner = Instance.new("UICorner")
+codeCorner.CornerRadius = UDim.new(0, 8)
+codeCorner.Parent = codeScroll
+
+local codeLabel = Instance.new("TextLabel")
+codeLabel.Size = UDim2.new(1, -16, 0, 0)
+codeLabel.Position = UDim2.new(0, 8, 0, 8)
+codeLabel.BackgroundTransparency = 1
+codeLabel.TextColor3 = Color3.fromRGB(200, 210, 220)
+codeLabel.Font = Enum.Font.Code
+codeLabel.TextSize = 13
+codeLabel.TextXAlignment = Enum.TextXAlignment.Left
+codeLabel.TextYAlignment = Enum.TextYAlignment.Top
+codeLabel.TextWrapped = true
+codeLabel.RichText = true
+codeLabel.Parent = codeScroll
+
+-- Lista de erros (abaixo do código)
+local errorsTitle = Instance.new("TextLabel")
+errorsTitle.Size = UDim2.new(1, 0, 0, 24)
+errorsTitle.Position = UDim2.new(0, 0, 0.58, 0)
+errorsTitle.BackgroundTransparency = 1
+errorsTitle.Text = "Erros encontrados:"
+errorsTitle.TextColor3 = Color3.fromRGB(255, 140, 140)
+errorsTitle.Font = Enum.Font.GothamBold
+errorsTitle.TextSize = 14
+errorsTitle.TextXAlignment = Enum.TextXAlignment.Left
+errorsTitle.Parent = codeView
+
+local errorsScroll = Instance.new("ScrollingFrame")
+errorsScroll.Size = UDim2.new(1, 0, 0.38, 0)
+errorsScroll.Position = UDim2.new(0, 0, 0.64, 0)
+errorsScroll.BackgroundTransparency = 1
+errorsScroll.BorderSizePixel = 0
+errorsScroll.ScrollBarThickness = 4
+errorsScroll.Parent = codeView
+
+local errorsLayout = Instance.new("UIListLayout")
+errorsLayout.Padding = UDim.new(0, 6)
+errorsLayout.Parent = errorsScroll
+
+-- 3. View de Explicação do Erro
+local errorDetailView = Instance.new("Frame")
+errorDetailView.Name = "ErrorDetailView"
+errorDetailView.Size = UDim2.new(1, 0, 1, 0)
+errorDetailView.BackgroundTransparency = 1
+errorDetailView.Visible = false
+errorDetailView.Parent = content
+
+local errorDetailTitle = Instance.new("TextLabel")
+errorDetailTitle.Size = UDim2.new(1, 0, 0, 30)
+errorDetailTitle.BackgroundTransparency = 1
+errorDetailTitle.TextColor3 = Color3.fromRGB(255, 150, 150)
+errorDetailTitle.Font = Enum.Font.GothamBold
+errorDetailTitle.TextSize = 16
+errorDetailTitle.TextXAlignment = Enum.TextXAlignment.Left
+errorDetailTitle.Parent = errorDetailView
+
+local errorDetailBox = Instance.new("TextLabel")
+errorDetailBox.Size = UDim2.new(1, 0, 1, -40)
+errorDetailBox.Position = UDim2.new(0, 0, 0, 40)
+errorDetailBox.BackgroundColor3 = Color3.fromRGB(28, 22, 25)
+errorDetailBox.TextColor3 = Color3.fromRGB(220, 210, 210)
+errorDetailBox.Font = Enum.Font.Gotham
+errorDetailBox.TextSize = 14
+errorDetailBox.TextWrapped = true
+errorDetailBox.TextXAlignment = Enum.TextXAlignment.Left
+errorDetailBox.TextYAlignment = Enum.TextYAlignment.Top
+errorDetailBox.Parent = errorDetailView
+
+local errorDetailCorner = Instance.new("UICorner")
+errorDetailCorner.CornerRadius = UDim.new(0, 8)
+errorDetailCorner.Parent = errorDetailBox
+
+local errorPadding = Instance.new("UIPadding")
+errorPadding.PaddingTop = UDim.new(0, 12)
+errorPadding.PaddingLeft = UDim.new(0, 12)
+errorPadding.PaddingRight = UDim.new(0, 12)
+errorPadding.Parent = errorDetailBox
+
+-- ============================================
+-- LÓGICA
+-- ============================================
+
+local currentScript = nil
+local currentView = "list" -- list | code | error
+
+local function clearChildren(parent, keepLayout)
+	for _, child in ipairs(parent:GetChildren()) do
+		if not (keepLayout and child:IsA("UIListLayout")) then
+			child:Destroy()
+		end
+	end
+end
+
+local function showView(viewName)
+	listView.Visible = (viewName == "list")
+	codeView.Visible = (viewName == "code")
+	errorDetailView.Visible = (viewName == "error")
+	backBtn.Visible = (viewName \~= "list")
+	currentView = viewName
+end
+
+local function createScriptButton(scriptInfo)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -8, 0, 52)
+	btn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+	btn.Text = ""
+	btn.AutoButtonColor = false
+	btn.Parent = listView
+
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = btn
+
+	-- Ícone do script
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.new(0, 32, 0, 32)
+	icon.Position = UDim2.new(0, 10, 0.5, -16)
+	icon.BackgroundTransparency = 1
+	icon.Image = "rbxassetid://6231961866"
+	icon.Parent = btn
+
+	-- Nome do script
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -100, 0, 22)
+	nameLabel.Position = UDim2.new(0, 52, 0, 8)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = scriptInfo.Name
+	nameLabel.TextColor3 = Color3.fromRGB(230, 230, 240)
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextSize = 14
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.Parent = btn
+
+	-- Path
+	local pathLabel = Instance.new("TextLabel")
+	pathLabel.Size = UDim2.new(1, -100, 0, 18)
+	pathLabel.Position = UDim2.new(0, 52, 0, 28)
+	pathLabel.BackgroundTransparency = 1
+	pathLabel.Text = scriptInfo.Path
+	pathLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
+	pathLabel.Font = Enum.Font.Gotham
+	pathLabel.TextSize = 11
+	pathLabel.TextXAlignment = Enum.TextXAlignment.Left
+	pathLabel.Parent = btn
+
+	-- Ícone de erro (se tiver)
+	if #scriptInfo.Errors > 0 then
+		local errorIcon = Instance.new("ImageLabel")
+		errorIcon.Size = UDim2.new(0, 24, 0, 24)
+		errorIcon.Position = UDim2.new(1, -40, 0.5, -12)
+		errorIcon.BackgroundTransparency = 1
+		errorIcon.Image = "rbxassetid://17011999744"
+		errorIcon.Parent = btn
+	end
+
+	btn.MouseButton1Click:Connect(function()
+		currentScript = scriptInfo
+		openScript(scriptInfo)
+	end)
+
+	return btn
+end
+
+function openScript(scriptInfo)
+	showView("code")
+	codeTitle.Text = scriptInfo.Name .. "  •  " .. scriptInfo.Path
+	codeLabel.Text = scriptInfo.Source
+	codeLabel.Size = UDim2.new(1, -16, 0, 20 + (#scriptInfo.Source:split("\n") * 16))
+	codeScroll.CanvasSize = UDim2.new(0, 0, 0, codeLabel.Size.Y.Offset + 20)
+
+	-- Mostra ou esconde o botão de corrigir
+	fixBtn.Visible = true
+
+	-- Limpa e cria os erros
+	clearChildren(errorsScroll, true)
+
+	if #scriptInfo.Errors == 0 then
+		local noError = Instance.new("TextLabel")
+		noError.Size = UDim2.new(1, 0, 0, 30)
+		noError.BackgroundTransparency = 1
+		noError.Text = "Nenhum erro encontrado ✓"
+		noError.TextColor3 = Color3.fromRGB(120, 220, 140)
+		noError.Font = Enum.Font.Gotham
+		noError.TextSize = 14
+		noError.Parent = errorsScroll
+	else
+		for i, err in ipairs(scriptInfo.Errors) do
+			local errBtn = Instance.new("TextButton")
+			errBtn.Size = UDim2.new(1, -4, 0, 40)
+			errBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 35)
+			errBtn.Text = ""
+			errBtn.Parent = errorsScroll
+
+			local errCorner = Instance.new("UICorner")
+			errCorner.CornerRadius = UDim.new(0, 6)
+			errCorner.Parent = errBtn
+
+			local errText = Instance.new("TextLabel")
+			errText.Size = UDim2.new(1, -16, 1, 0)
+			errText.Position = UDim2.new(0, 10, 0, 0)
+			errText.BackgroundTransparency = 1
+			errText.Text = "Linha " .. err.Line .. " → " .. err.Message
+			errText.TextColor3 = Color3.fromRGB(255, 160, 160)
+			errText.Font = Enum.Font.Gotham
+			errText.TextSize = 13
+			errText.TextXAlignment = Enum.TextXAlignment.Left
+			errText.Parent = errBtn
+
+			errBtn.MouseButton1Click:Connect(function()
+				showErrorDetail(err)
+			end)
+		end
+	end
+
+	errorsScroll.CanvasSize = UDim2.new(0, 0, 0, errorsLayout.AbsoluteContentSize.Y + 10)
+end
+
+function showErrorDetail(err)
+	showView("error")
+	errorDetailTitle.Text = "Erro na linha " .. err.Line
+	errorDetailBox.Text = "Mensagem:\n" .. err.Message .. "\n\nExplicação:\n" .. err.Explanation
+end
+
+local function refreshList()
+	clearChildren(listView, true)
+	for _, scriptInfo in ipairs(scriptsData) do
+		createScriptButton(scriptInfo)
+	end
+	listView.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
+end
+
+-- ============================================
+-- EVENTOS
+-- ============================================
+
+toggleBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+	if mainFrame.Visible then
+		refreshList()
+		showView("list")
+	end
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+end)
+
+backBtn.MouseButton1Click:Connect(function()
+	if currentView == "error" then
+		showView("code")
+	else
+		showView("list")
+		currentScript = nil
+	end
+end)
+
+-- Botão de corrigir com ChatGPT (simulado)
+fixBtn.MouseButton1Click:Connect(function()
+	if not currentScript then return end
+
+	fixBtn.ImageTransparency = 0.5
+	-- Aqui você vai chamar o RemoteEvent para o servidor
+	-- e o servidor chama a API do ChatGPT
+
+	-- Simulação de correção:
+	task.wait(1.2)
+
+	-- Remove os erros (simulado)
+	currentScript.Errors = {}
+	currentScript.Source = currentScript.Source .. "\n-- Código corrigido pelo ChatGPT\n"
+
+	openScript(currentScript) -- atualiza a tela
+	fixBtn.ImageTransparency = 0
+
+	-- Aviso visual
+	local notify = Instance.new("TextLabel")
+	notify.Size = UDim2.new(0, 260, 0, 36)
+	notify.Position = UDim2.new(0.5, -130, 1, -50)
+	notify.BackgroundColor3 = Color3.fromRGB(30, 60, 40)
+	notify.Text = "Código corrigido com sucesso!"
+	notify.TextColor3 = Color3.fromRGB(140, 255, 160)
+	notify.Font = Enum.Font.GothamBold
+	notify.TextSize = 14
+	notify.Parent = mainFrame
+
+	local nCorner = Instance.new("UICorner")
+	nCorner.CornerRadius = UDim.new(0, 8)
+	nCorner.Parent = notify
+
+	task.delay(2.5, function()
+		notify:Destroy()
+	end)
+end)
+
+-- Atualiza o tamanho da lista quando o layout muda
+listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	listView.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y + 10)
+end)
+
+print("[ScriptDebugger] Interface carregada!")
